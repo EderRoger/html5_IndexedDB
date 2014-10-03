@@ -1,0 +1,14 @@
+{
+    "version": "1.0.0",
+    "private": false,
+    "name": "html5-indexedDB",
+    "description": "A pet application for indexedDB offline storage",
+    "repository": "https://github.com/EderRoger/html5_IndexedDB",
+    "license": "MIT",
+    "devDependencies": {
+        "http-server": "^0.6.1"
+    },
+    "scripts": {
+        "start": "http-server -a 0.0.0.0 -p 8000"
+    }
+}
