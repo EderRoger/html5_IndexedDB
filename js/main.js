@@ -1,31 +1,49 @@
 var html5IndexedDB = {};
+window.indexedDB = window.indexedDB || window.webkitIndexedDB ||
+    window.mozIndexedDB;
+
+if ('webkitIndexedDB' in window) {
+    window.IDBTransaction = window.webkitIDBTransaction;
+    window.IDBKeyRange = window.webkitIDBKeyRange;
+}
+
 html5IndexedDB.indexedDB = {};
+html5IndexedDB.indexedDB.db = null;
+
+html5IndexedDB.indexedDB.onerror = function(e) {
+    console.log(e);
+};
 
 html5IndexedDB.indexedDB.open = function() {
-    var version = 1;
-    var request = indexedDB.open("todos", version);
-
-    // We can only create Object stores in a versionchange transaction.
-    request.onupgradeneeded = function(e) {
-        var db = e.target.result;
-
-        // A versionchange transaction is started automatically.
-        e.target.transaction.onerror = html5IndexedDB.indexedDB.onerror;
-
-        if(db.objectStoreNames.contains("todo")) {
-            db.deleteObjectStore("todo");
-        }
-
-        var store = db.createObjectStore("todo",
-            {keyPath: "timeStamp"});
-    };
+    var request = indexedDB.open("todos");
 
     request.onsuccess = function(e) {
+        var v = 1;
         html5IndexedDB.indexedDB.db = e.target.result;
-        html5IndexedDB.indexedDB.getAllTodoItems();
-        console.log('success open db');
-    };
+        var db = html5IndexedDB.indexedDB.db;
+        // We can only create Object stores in a setVersion transaction;
+        if (v != db.version) {
+            var setVrequest = db.setVersion(v);
 
+            // onsuccess is the only place we can create Object Stores
+            setVrequest.onerror = html5IndexedDB.indexedDB.onerror;
+            setVrequest.onsuccess = function(e) {
+                if(db.objectStoreNames.contains("todo")) {
+                    db.deleteObjectStore("todo");
+                }
+
+                var store = db.createObjectStore("todo",
+                    {keyPath: "timeStamp"});
+                e.target.transaction.oncomplete = function() {
+                    html5IndexedDB.indexedDB.getAllTodoItems();
+                };
+            };
+        } else {
+            request.transaction.oncomplete = function() {
+                html5IndexedDB.indexedDB.getAllTodoItems();
+            };
+        }
+    };
     request.onerror = html5IndexedDB.indexedDB.onerror;
 };
 
@@ -33,18 +51,36 @@ html5IndexedDB.indexedDB.addTodo = function(todoText) {
     var db = html5IndexedDB.indexedDB.db;
     var trans = db.transaction(["todo"], "readwrite");
     var store = trans.objectStore("todo");
-    var request = store.put({
-        "text": todoText,
-        "timeStamp" : new Date().getTime()
-    });
 
-    trans.oncomplete = function(e) {
-        // Re-render all the todos
+    var data = {
+        "text": todoText,
+        "timeStamp": new Date().getTime()
+    };
+
+    var request = store.put(data);
+
+    request.onsuccess = function(e) {
         html5IndexedDB.indexedDB.getAllTodoItems();
     };
 
     request.onerror = function(e) {
-        console.log(e.value);
+        console.log("Error Adding: ", e);
+    };
+};
+
+html5IndexedDB.indexedDB.deleteTodo = function(id) {
+    var db = html5IndexedDB.indexedDB.db;
+    var trans = db.transaction(["todo"], "readwrite");
+    var store = trans.objectStore("todo");
+
+    var request = store.delete(id);
+
+    request.onsuccess = function(e) {
+        html5IndexedDB.indexedDB.getAllTodoItems();
+    };
+
+    request.onerror = function(e) {
+        console.log("Error Adding: ", e);
     };
 };
 
@@ -57,8 +93,7 @@ html5IndexedDB.indexedDB.getAllTodoItems = function() {
     var store = trans.objectStore("todo");
 
     // Get everything in the store;
-    var keyRange = IDBKeyRange.lowerBound(0);
-    var cursorRequest = store.openCursor(keyRange);
+    var cursorRequest = store.openCursor();
 
     cursorRequest.onsuccess = function(e) {
         var result = e.target.result;
@@ -72,33 +107,15 @@ html5IndexedDB.indexedDB.getAllTodoItems = function() {
     cursorRequest.onerror = html5IndexedDB.indexedDB.onerror;
 };
 
-html5IndexedDB.indexedDB.deleteTodo = function(id) {
-    var db = html5IndexedDB.indexedDB.db;
-    var trans = db.transaction(["todo"], "readwrite");
-    var store = trans.objectStore("todo");
-
-    var request = store.delete(id);
-
-    trans.oncomplete = function(e) {
-        html5IndexedDB.indexedDB.getAllTodoItems();  // Refresh the screen
-    };
-
-    request.onerror = function(e) {
-        console.log(e);
-    };
-};
-
 function renderTodo(row) {
     var todos = document.getElementById("todoItems");
     var li = document.createElement("li");
     var a = document.createElement("a");
-    var t = document.createTextNode("");
-    t.data = row.text;
+    var t = document.createTextNode(row.text);
 
-    a.addEventListener("click", function(e) {
-        console.log("deletando..", row.text);
-        html5IndexedDB.indexedDB.deleteTodo(row.text);
-    });
+    a.addEventListener("click", function() {
+        html5IndexedDB.indexedDB.deleteTodo(row.timeStamp);
+    }, false);
 
     a.textContent = " [Delete]";
     li.appendChild(t);
@@ -106,15 +123,14 @@ function renderTodo(row) {
     todos.appendChild(li);
 }
 
-function init() {
-    html5IndexedDB.indexedDB.open(); // open displays the data previously saved
+function addTodo() {
+    var todo = document.getElementById("todo");
+    html5IndexedDB.indexedDB.addTodo(todo.value);
+    todo.value = "";
 }
 
-function addTodo() {
-    var todo = document.getElementById('todo');
-
-    html5IndexedDB.indexedDB.addTodo(todo.value);
-    todo.value = '';
+function init() {
+    html5IndexedDB.indexedDB.open();
 }
 
 window.addEventListener("DOMContentLoaded", init, false);
